@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rubik's Cube · Browser Demo</title>
+<meta name="description" content="Interactive 3D Rubik's Cube in the browser. JavaScript / Three.js port of a Python + PyOpenGL learning project by Arjun Prithvi.">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #141414;
+    --border: #1f1f1f;
+    --text: #e8e8e8;
+    --text-dim: #888;
+    --accent: #0DFF82;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  #app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.2px; }
+  header h1 .accent { color: var(--accent); }
+  header .links { display: flex; gap: 18px; font-size: 13px; }
+  header a { color: var(--text-dim); text-decoration: none; }
+  header a:hover { color: var(--text); }
+  #scene { position: relative; outline: none; }
+  #scene canvas { display: block; width: 100%; height: 100%; }
+  #help {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    background: rgba(20, 20, 20, 0.75);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    max-width: 240px;
+    backdrop-filter: blur(6px);
+  }
+  #help b { color: var(--text); font-weight: 600; }
+  #help kbd {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    background: #222;
+    color: var(--text);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+  footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    background: var(--panel);
+  }
+  footer button {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 7px 14px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  footer button:hover { border-color: var(--accent); }
+  footer button:active { background: rgba(13, 255, 130, 0.08); }
+  footer button.primary { color: var(--accent); border-color: rgba(13, 255, 130, 0.4); }
+  footer .group { display: flex; gap: 6px; }
+  footer .sep {
+    width: 1px;
+    background: var(--border);
+    margin: 0 6px;
+  }
+  #status {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: rgba(20, 20, 20, 0.75);
+    padding: 6px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+  @media (max-width: 600px) {
+    #help { display: none; }
+    footer button { padding: 8px 10px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Rubik's Cube <span class="accent">·</span> browser demo</h1>
+    <div class="links">
+      <a href="https://github.com/windycityassassin/rubikscubetutorial" target="_blank" rel="noopener">code →</a>
+      <a href="https://windycityassassin.github.io/" target="_blank" rel="noopener">portfolio →</a>
+    </div>
+  </header>
+
+  <div id="scene" tabindex="0">
+    <div id="help">
+      <div><b>Rotate face</b>: <kbd>F</kbd> <kbd>B</kbd> <kbd>R</kbd> <kbd>L</kbd> <kbd>U</kbd> <kbd>D</kbd></div>
+      <div><b>Inverse</b>: hold <kbd>Shift</kbd></div>
+      <div><b>Orbit</b>: drag · <b>Zoom</b>: scroll</div>
+      <div><b>Scramble</b>: <kbd>Space</kbd></div>
+    </div>
+    <div id="status">solved</div>
+  </div>
+
+  <footer>
+    <div class="group">
+      <button data-move="F">F</button>
+      <button data-move="B">B</button>
+      <button data-move="R">R</button>
+      <button data-move="L">L</button>
+      <button data-move="U">U</button>
+      <button data-move="D">D</button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button id="invert">Shift: off</button>
+      <button id="scramble" class="primary">scramble</button>
+      <button id="reset">reset</button>
+    </div>
+  </footer>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---- Colors: match the Python (right, left, top, bottom, front, back) ----
+const COLOR = {
+  right:  0x00c853,   // green
+  left:   0x1e88e5,   // blue
+  top:    0xf5f5f5,   // white
+  bottom: 0xffd600,   // yellow
+  front:  0xe53935,   // red
+  back:   0xff8a00,   // orange
+  inside: 0x111111    // plastic
+};
+
+// ---- Three.js setup ----
+const sceneEl = document.getElementById('scene');
+const statusEl = document.getElementById('status');
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a0a);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+camera.position.set(5.5, 4.5, 6.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+sceneEl.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false;
+controls.minDistance = 5;
+controls.maxDistance = 15;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 0.7);
+key.position.set(5, 8, 6);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+fill.position.set(-5, -3, -4);
+scene.add(fill);
+
+function resize() {
+  const w = sceneEl.clientWidth;
+  const h = sceneEl.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---- Cube model: 27 cubies as Three.js meshes ----
+// Material order in BoxGeometry: +x, -x, +y, -y, +z, -z  (right, left, top, bottom, front, back)
+const cubeGroup = new THREE.Group();
+scene.add(cubeGroup);
+
+const CUBIE_SIZE = 0.96;   // gap between cubies = 0.04
+const geometry = new THREE.BoxGeometry(CUBIE_SIZE, CUBIE_SIZE, CUBIE_SIZE);
+
+function buildCubie(x, y, z) {
+  const mats = [
+    new THREE.MeshLambertMaterial({ color: x === 1  ? COLOR.right  : COLOR.inside }),
+    new THREE.MeshLambertMaterial({ color: x === -1 ? COLOR.left   : COLOR.inside }),
+    new THREE.MeshLambertMaterial({ color: y === 1  ? COLOR.top    : COLOR.inside }),
+    new THREE.MeshLambertMaterial({ color: y === -1 ? COLOR.bottom : COLOR.inside }),
+    new THREE.MeshLambertMaterial({ color: z === 1  ? COLOR.front  : COLOR.inside }),
+    new THREE.MeshLambertMaterial({ color: z === -1 ? COLOR.back   : COLOR.inside }),
+  ];
+  const mesh = new THREE.Mesh(geometry, mats);
+  mesh.position.set(x, y, z);
+  mesh.userData.solved = { x, y, z };
+  return mesh;
+}
+
+let cubies = [];
+function buildCube() {
+  cubies.forEach(c => cubeGroup.remove(c));
+  cubies = [];
+  for (let x = -1; x <= 1; x++)
+    for (let y = -1; y <= 1; y++)
+      for (let z = -1; z <= 1; z++) {
+        const c = buildCubie(x, y, z);
+        cubies.push(c);
+        cubeGroup.add(c);
+      }
+}
+buildCube();
+
+// ---- Face turns with animation via pivot reparenting ----
+// FACES[id] = { axis, coord, vec }
+//   axis: 'x' | 'y' | 'z' — the axis the face lies perpendicular to
+//   coord: 1 or -1 — which layer
+//   sign: clockwise rotation direction when looking AT the face from outside
+//         (positive rotation around the outward-pointing axis)
+const FACES = {
+  R: { axis: 'x', coord:  1, sign: -1 },
+  L: { axis: 'x', coord: -1, sign:  1 },
+  U: { axis: 'y', coord:  1, sign: -1 },
+  D: { axis: 'y', coord: -1, sign:  1 },
+  F: { axis: 'z', coord:  1, sign: -1 },
+  B: { axis: 'z', coord: -1, sign:  1 },
+};
+
+let busy = false;
+const queue = [];
+let cubeVersion = 0;   // bumped when the cube is rebuilt; in-flight turns from older versions abort
+
+function enqueue(face, inverse = false) {
+  queue.push({ face, inverse });
+  pump();
+}
+
+function pump() {
+  if (busy || queue.length === 0) return;
+  const { face, inverse } = queue.shift();
+  performTurn(face, inverse);
+}
+
+function performTurn(faceId, inverse) {
+  const face = FACES[faceId];
+  if (!face) return;
+  busy = true;
+  const myVersion = cubeVersion;
+
+  // Find cubies on this layer (round to handle floating drift)
+  const layer = cubies.filter(c => Math.round(c.position[face.axis]) === face.coord);
+
+  // Build a pivot Group at the origin, reparent layer cubies into it
+  const pivot = new THREE.Group();
+  cubeGroup.add(pivot);
+  layer.forEach(c => pivot.attach(c)); // attach() preserves world transform
+
+  const targetAngle = (Math.PI / 2) * face.sign * (inverse ? -1 : 1);
+  const duration = 180; // ms
+  const start = performance.now();
+  const axisVec = new THREE.Vector3(
+    face.axis === 'x' ? 1 : 0,
+    face.axis === 'y' ? 1 : 0,
+    face.axis === 'z' ? 1 : 0
+  );
+
+  function step(now) {
+    if (myVersion !== cubeVersion) {
+      // Cube was rebuilt mid-turn: drop the pivot and bail.
+      if (pivot.parent) pivot.parent.remove(pivot);
+      busy = false;
+      return;
+    }
+    const t = Math.min(1, (now - start) / duration);
+    // Smooth-step easing
+    const e = t * t * (3 - 2 * t);
+    pivot.setRotationFromAxisAngle(axisVec, targetAngle * e);
+    renderer.render(scene, camera);
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      // Bake: snap to exact angle, then re-parent and round positions
+      pivot.setRotationFromAxisAngle(axisVec, targetAngle);
+      pivot.updateMatrixWorld(true);
+      layer.forEach(c => {
+        cubeGroup.attach(c);
+        c.position.x = Math.round(c.position.x);
+        c.position.y = Math.round(c.position.y);
+        c.position.z = Math.round(c.position.z);
+        // Snap quaternion components to clean multiples of 90 deg so drift can't accumulate
+        snapQuaternion(c.quaternion);
+      });
+      cubeGroup.remove(pivot);
+      busy = false;
+      updateStatus();
+      pump();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+// Round a quaternion to the nearest 90 deg orientation (24 possible cube orientations).
+// Keeps cubies on the integer lattice after many turns.
+function snapQuaternion(q) {
+  // The quaternion components for 90 deg multiples are 0 or ±sqrt(0.5) or ±1.
+  // Easier: convert to matrix, round each entry to nearest 0 / ±1, re-quaternionize.
+  const m = new THREE.Matrix4().makeRotationFromQuaternion(q);
+  const e = m.elements;
+  for (let i = 0; i < 16; i++) {
+    const v = e[i];
+    e[i] = Math.abs(v) < 0.5 ? 0 : (v > 0 ? 1 : -1);
+  }
+  q.setFromRotationMatrix(m);
+}
+
+// ---- Scramble ----
+function scramble(count = 20) {
+  if (busy || queue.length) return;
+  const moves = ['F', 'B', 'R', 'L', 'U', 'D'];
+  let lastFace = null;
+  for (let i = 0; i < count; i++) {
+    let m;
+    do { m = moves[Math.floor(Math.random() * 6)]; }
+    while (m === lastFace);          // avoid trivial repeats
+    lastFace = m;
+    enqueue(m, Math.random() < 0.5);
+  }
+}
+
+// ---- Solved-state check ----
+function isSolved() {
+  return cubies.every(c => {
+    const s = c.userData.solved;
+    return Math.round(c.position.x) === s.x
+        && Math.round(c.position.y) === s.y
+        && Math.round(c.position.z) === s.z
+        && Math.abs(c.quaternion.x) < 1e-3
+        && Math.abs(c.quaternion.y) < 1e-3
+        && Math.abs(c.quaternion.z) < 1e-3;
+  });
+}
+
+function updateStatus() {
+  statusEl.textContent = isSolved() ? 'solved' : 'scrambled';
+}
+
+// ---- Input ----
+let inverseHeld = false;
+const invertBtn = document.getElementById('invert');
+
+function setInvert(v) {
+  inverseHeld = v;
+  invertBtn.textContent = `Shift: ${v ? 'on' : 'off'}`;
+  invertBtn.style.borderColor = v ? 'rgba(13,255,130,0.4)' : '';
+  invertBtn.style.color = v ? 'var(--accent)' : '';
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+  const k = e.key.toUpperCase();
+  if (k === ' ' || e.code === 'Space') {
+    e.preventDefault();
+    scramble();
+    return;
+  }
+  if ('FBRLUD'.includes(k)) {
+    enqueue(k, e.shiftKey);
+  }
+});
+
+document.querySelectorAll('footer button[data-move]').forEach(btn => {
+  btn.addEventListener('click', () => enqueue(btn.dataset.move, inverseHeld));
+});
+invertBtn.addEventListener('click', () => setInvert(!inverseHeld));
+document.getElementById('scramble').addEventListener('click', () => scramble());
+document.getElementById('reset').addEventListener('click', () => {
+  queue.length = 0;
+  cubeVersion++;     // signals any in-flight turn to abort
+  busy = false;
+  buildCube();
+  updateStatus();
+});
+
+// ---- Render loop (orbit controls + idle render) ----
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  if (!busy) renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

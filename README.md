@@ -2,6 +2,8 @@
 
 An interactive 3x3x3 Rubik's cube you can rotate, scramble, and turn face by face.
 
+**Live demo (browser):** https://windycityassassin.github.io/rubikscubetutorial/
+
 ## The problem
 
 I wanted to understand 3D rotation math by building something with it instead of reading about it. A Rubik's cube is a clean target: 27 sub-cubes, six face rotations, and every move has to update both geometry (where each cubie sits in space) and state (which colored sticker is now facing which direction). It is a learning project, not a solver and not a speedcubing trainer. The goal was a working simulator with honest, hand-rolled rotation logic.
@@ -38,6 +40,12 @@ python rubiks_cube.py
 ```
 
 Requires a display (OpenGL context). Tested on Python 3.11 with Pygame 2.5.2, PyOpenGL 3.1.7, NumPy 1.24.3.
+
+## Browser version
+
+The desktop app needs OpenGL, which makes it awkward to share. `docs/index.html` is a single-file JavaScript port using Three.js, served from GitHub Pages at the URL above. Same controls (`F/B/R/L/U/D`, hold `Shift` for inverse, `Space` to scramble, drag to orbit), same color scheme, but no install.
+
+The JS version drops the hand-rolled color-permutation tables. Instead it reparents the 9 face cubies into a temporary `THREE.Group` pivot, animates the pivot's rotation, then bakes the world transform back onto each cubie and re-rounds positions to the integer lattice. Three.js's matrix math handles sticker orientation for free. A `snapQuaternion` step rounds each cubie's orientation to the nearest 90-degree multiple after every turn so float drift can't accumulate over a long scramble.
 
 ## What I learned
 
