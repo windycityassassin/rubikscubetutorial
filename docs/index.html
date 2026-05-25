@@ -3,16 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rubik's Cube · Browser Demo</title>
-<meta name="description" content="Interactive 3D Rubik's Cube in the browser. JavaScript / Three.js port of a Python + PyOpenGL learning project by Arjun Prithvi.">
+<title>Rubik's Cube · Browser Demo & Tutorial</title>
+<meta name="description" content="Interactive 3D Rubik's Cube in the browser, with a Kociemba two-phase solver and a Beginner's Method walkthrough. JS / Three.js port of a Python + PyOpenGL learning project by Arjun Prithvi.">
 <style>
   :root {
     --bg: #0a0a0a;
     --panel: #141414;
+    --panel-soft: #181818;
     --border: #1f1f1f;
+    --border-hot: #2a2a2a;
     --text: #e8e8e8;
     --text-dim: #888;
+    --text-faint: #555;
     --accent: #0DFF82;
+    --accent-warm: #FF2947;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -46,14 +50,14 @@
     position: absolute;
     top: 14px;
     left: 14px;
-    background: rgba(20, 20, 20, 0.75);
+    background: rgba(20, 20, 20, 0.78);
     border: 1px solid var(--border);
     padding: 10px 12px;
     border-radius: 4px;
     font-size: 12px;
     color: var(--text-dim);
     line-height: 1.6;
-    max-width: 240px;
+    max-width: 260px;
     backdrop-filter: blur(6px);
   }
   #help b { color: var(--text); font-weight: 600; }
@@ -65,6 +69,85 @@
     border-radius: 3px;
     font-size: 11px;
   }
+  #status {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: rgba(20, 20, 20, 0.78);
+    padding: 6px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+  #status.warn { color: var(--accent-warm); border-color: rgba(255, 41, 71, 0.3); }
+
+  /* Move strip shown during solve playback */
+  #strip {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    padding: 10px 12px;
+    background: rgba(20, 20, 20, 0.85);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    backdrop-filter: blur(6px);
+  }
+  #strip.active { display: flex; }
+  #strip-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  #strip-head .title { color: var(--text); letter-spacing: 1px; text-transform: uppercase; }
+  #strip-head .count { color: var(--accent); }
+  #strip-head button {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    font-family: inherit;
+    font-size: 10px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  #strip-head button:hover { color: var(--text); border-color: var(--border-hot); }
+  #strip-moves {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  #strip-moves::-webkit-scrollbar { height: 4px; }
+  #strip-moves::-webkit-scrollbar-thumb { background: var(--border-hot); border-radius: 2px; }
+  .move-chip {
+    flex-shrink: 0;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    min-width: 32px;
+    text-align: center;
+  }
+  .move-chip.done { color: var(--text-faint); }
+  .move-chip.current {
+    color: #000;
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
   footer {
     padding: 12px 20px;
     border-top: 1px solid var(--border);
@@ -85,40 +168,143 @@
     letter-spacing: 1px;
     cursor: pointer;
     border-radius: 3px;
-    transition: border-color 0.15s, background 0.15s;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
   }
-  footer button:hover { border-color: var(--accent); }
-  footer button:active { background: rgba(13, 255, 130, 0.08); }
+  footer button:hover:not(:disabled) { border-color: var(--accent); }
+  footer button:active:not(:disabled) { background: rgba(13, 255, 130, 0.08); }
+  footer button:disabled { opacity: 0.4; cursor: not-allowed; }
   footer button.primary { color: var(--accent); border-color: rgba(13, 255, 130, 0.4); }
+  footer button.warm { color: var(--accent-warm); border-color: rgba(255, 41, 71, 0.4); }
   footer .group { display: flex; gap: 6px; }
-  footer .sep {
-    width: 1px;
-    background: var(--border);
-    margin: 0 6px;
+  footer .sep { width: 1px; background: var(--border); margin: 0 6px; }
+
+  /* Learn modal */
+  #modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 10;
   }
-  #status {
-    position: absolute;
-    bottom: 14px;
-    right: 14px;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 11px;
+  #modal-backdrop.active { display: flex; }
+  #modal {
+    background: var(--panel);
+    border: 1px solid var(--border-hot);
+    border-radius: 8px;
+    max-width: 760px;
+    max-height: 100%;
+    width: 100%;
+    overflow-y: auto;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  }
+  #modal-head {
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #modal-head h2 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+  #modal-head h2 .accent { color: var(--accent); }
+  #modal-close {
+    background: transparent;
+    border: none;
     color: var(--text-dim);
-    background: rgba(20, 20, 20, 0.75);
-    padding: 6px 10px;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 6px;
+  }
+  #modal-close:hover { color: var(--text); }
+  #modal-body { padding: 24px; line-height: 1.65; }
+  #modal-body h3 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-faint);
+    margin-top: 28px;
+    margin-bottom: 12px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  #modal-body h3:first-child { margin-top: 0; }
+  #modal-body p { margin-bottom: 12px; color: var(--text); }
+  #modal-body p.note { color: var(--text-dim); font-size: 14px; }
+  #modal-body code, #modal-body kbd {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    background: var(--panel-soft);
+    color: var(--text);
+    padding: 1px 6px;
     border-radius: 3px;
+    font-size: 13px;
     border: 1px solid var(--border);
   }
+  #modal-body .notation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 10px 0 18px;
+  }
+  #modal-body .notation-grid div {
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  #modal-body .notation-grid b {
+    color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    margin-right: 8px;
+  }
+  #modal-body ol {
+    margin: 8px 0 18px 20px;
+    color: var(--text);
+  }
+  #modal-body ol li { margin-bottom: 10px; }
+  #modal-body ol li b { color: var(--accent); font-weight: 600; }
+  #modal-body .algo {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    background: var(--panel-soft);
+    color: var(--accent);
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    display: inline-block;
+    font-size: 13px;
+    margin: 2px 0;
+  }
+  #modal-body .algo-row { margin-top: 6px; color: var(--text-dim); font-size: 13px; }
+  #modal-body .algo-row .label { color: var(--text); margin-right: 8px; }
+
   @media (max-width: 600px) {
     #help { display: none; }
-    footer button { padding: 8px 10px; font-size: 11px; }
+    footer button { padding: 8px 10px; font-size: 11px; letter-spacing: 0; }
+    #modal-body { padding: 18px; }
   }
 </style>
+
+<!-- cubejs: Kociemba two-phase solver. cube.js defines window.Cube, solve.js adds Cube.initSolver & prototype.solve -->
+<script src="https://unpkg.com/cubejs@1.3.2/lib/cube.js"></script>
+<script src="https://unpkg.com/cubejs@1.3.2/lib/solve.js"></script>
 </head>
 <body>
 <div id="app">
   <header>
-    <h1>Rubik's Cube <span class="accent">·</span> browser demo</h1>
+    <h1>Rubik's Cube <span class="accent">·</span> browser demo &amp; tutorial</h1>
     <div class="links">
+      <a href="#" id="open-modal">how to solve →</a>
       <a href="https://github.com/windycityassassin/rubikscubetutorial" target="_blank" rel="noopener">code →</a>
       <a href="https://windycityassassin.github.io/" target="_blank" rel="noopener">portfolio →</a>
     </div>
@@ -129,9 +315,17 @@
       <div><b>Rotate face</b>: <kbd>F</kbd> <kbd>B</kbd> <kbd>R</kbd> <kbd>L</kbd> <kbd>U</kbd> <kbd>D</kbd></div>
       <div><b>Inverse</b>: hold <kbd>Shift</kbd></div>
       <div><b>Orbit</b>: drag · <b>Zoom</b>: scroll</div>
-      <div><b>Scramble</b>: <kbd>Space</kbd></div>
+      <div><b>Scramble</b>: <kbd>Space</kbd> · <b>Solve</b>: <kbd>Enter</kbd></div>
     </div>
     <div id="status">solved</div>
+    <div id="strip">
+      <div id="strip-head">
+        <span class="title">Solution</span>
+        <span><span class="count" id="strip-count">0 / 0</span></span>
+        <button id="strip-stop">stop</button>
+      </div>
+      <div id="strip-moves"></div>
+    </div>
   </div>
 
   <footer>
@@ -147,9 +341,60 @@
     <div class="group">
       <button id="invert">Shift: off</button>
       <button id="scramble" class="primary">scramble</button>
+      <button id="solve" class="primary">solve</button>
       <button id="reset">reset</button>
     </div>
   </footer>
+</div>
+
+<div id="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div id="modal">
+    <div id="modal-head">
+      <h2 id="modal-title">How to <span class="accent">solve</span> a Rubik's cube</h2>
+      <button id="modal-close" aria-label="Close">×</button>
+    </div>
+    <div id="modal-body">
+
+      <h3>Notation</h3>
+      <p>Every move turns one face 90 degrees. The letter names the face you're looking at; a prime (<code>'</code>) means counter-clockwise; a <code>2</code> means a 180-degree turn (two clockwise turns).</p>
+      <div class="notation-grid">
+        <div><b>F</b> front face, clockwise</div>
+        <div><b>B</b> back face, clockwise</div>
+        <div><b>R</b> right face, clockwise</div>
+        <div><b>L</b> left face, clockwise</div>
+        <div><b>U</b> top face, clockwise</div>
+        <div><b>D</b> bottom face, clockwise</div>
+        <div><b>R'</b> right face, counter-clockwise</div>
+        <div><b>U2</b> top face, 180°</div>
+      </div>
+      <p class="note">Clockwise is always defined as <em>looking at that face from outside the cube</em>. <code>D</code> turns clockwise when you flip the cube over and look at the bottom, not when viewed from above.</p>
+
+      <h3>Beginner's Method (how humans solve it)</h3>
+      <p>The most common method taught to beginners has four big phases. It's not optimal in move count, but every step has a clear visual goal and a small handful of algorithms to memorize.</p>
+      <ol>
+        <li><b>White cross.</b> Get the four white edges on the top face, with their side colors matching the side centers. No algorithm needed: just find each white edge piece and put it where it belongs. ~8 moves.</li>
+        <li><b>White corners (first layer done).</b> For each white corner, position it under where it belongs, then repeat <span class="algo">R' D' R D</span> until the corner pops into place. This algorithm preserves the cross and cycles a corner up. ~15 moves.</li>
+        <li><b>Middle layer edges (first two layers done).</b> Find a non-yellow edge in the top layer, line it up with its center, then run one of two mirror algorithms depending on direction:
+          <div class="algo-row"><span class="label">insert right:</span><span class="algo">U R U' R' U' F' U F</span></div>
+          <div class="algo-row"><span class="label">insert left:</span><span class="algo">U' L' U L U F U' F'</span></div>
+        </li>
+        <li><b>Last layer (yellow).</b> Four sub-steps, each one or two algorithms:
+          <div class="algo-row"><span class="label">yellow cross:</span><span class="algo">F R U R' U' F'</span> (repeat until cross appears)</div>
+          <div class="algo-row"><span class="label">orient last-layer corners:</span><span class="algo">R U R' U R U2 R'</span> (Sune)</div>
+          <div class="algo-row"><span class="label">permute corners:</span><span class="algo">U R U' L' U R' U' L</span></div>
+          <div class="algo-row"><span class="label">permute edges:</span><span class="algo">R U' R U R U R U' R' U' R2</span></div>
+        </li>
+      </ol>
+      <p class="note">Total ~50–100 moves with practice. Speedsolvers use <b>CFOP</b> (Fridrich), which solves the first two layers together and has ~57 OLL + 21 PLL algorithms for the last layer.</p>
+
+      <h3>What the Solve button does</h3>
+      <p>This demo's <b>Solve</b> button uses <b>Kociemba's two-phase algorithm</b> (1992): the cube is first reduced to a subgroup where only half-turns of U/D and quarter-turns of everything else are needed, then solved within that subgroup. The result is a near-optimal solution in roughly 20 moves.</p>
+      <p class="note">Kociemba's solution is <em>shorter</em> than Beginner's Method but isn't pedagogically useful: each move depends on a precomputed pruning table, not on a state you can see. Humans learn the layer-by-layer method even though it takes 3–5× as many moves, because each step has an interpretable goal.</p>
+
+      <h3>How this is built</h3>
+      <p>27 little cubes (cubies) live in a <code>THREE.Group</code> at integer positions. A face turn picks the 9 cubies on that layer, reparents them into a temporary <code>THREE.Group</code> pivot, animates the pivot's rotation over 180&nbsp;ms, then bakes the world transform back onto each cubie and re-rounds positions and orientations to clean 90° multiples so float drift can't accumulate. The Solve button serializes the current state into Kociemba's 54-character facelet string and hands it to <a href="https://github.com/ldez/cubejs" target="_blank" rel="noopener" style="color: var(--accent);">cubejs</a>, the JS port of the two-phase algorithm.</p>
+    </div>
+  </div>
 </div>
 
 <script type="importmap">
@@ -166,19 +411,22 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ---- Colors: match the Python (right, left, top, bottom, front, back) ----
 const COLOR = {
-  right:  0x00c853,   // green
-  left:   0x1e88e5,   // blue
-  top:    0xf5f5f5,   // white
-  bottom: 0xffd600,   // yellow
-  front:  0xe53935,   // red
-  back:   0xff8a00,   // orange
+  right:  0x00c853,   // green   (R face)
+  left:   0x1e88e5,   // blue    (L face)
+  top:    0xf5f5f5,   // white   (U face)
+  bottom: 0xffd600,   // yellow  (D face)
+  front:  0xe53935,   // red     (F face)
+  back:   0xff8a00,   // orange  (B face)
   inside: 0x111111    // plastic
 };
 
-// ---- Three.js setup ----
 const sceneEl = document.getElementById('scene');
 const statusEl = document.getElementById('status');
+const solveBtn = document.getElementById('solve');
+const scrambleBtn = document.getElementById('scramble');
+const resetBtn = document.getElementById('reset');
 
+// ---- Three.js setup ----
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a0a);
 
@@ -197,12 +445,12 @@ controls.minDistance = 5;
 controls.maxDistance = 15;
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-const key = new THREE.DirectionalLight(0xffffff, 0.7);
-key.position.set(5, 8, 6);
-scene.add(key);
-const fill = new THREE.DirectionalLight(0xffffff, 0.25);
-fill.position.set(-5, -3, -4);
-scene.add(fill);
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+keyLight.position.set(5, 8, 6);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.25);
+fillLight.position.set(-5, -3, -4);
+scene.add(fillLight);
 
 function resize() {
   const w = sceneEl.clientWidth;
@@ -214,23 +462,33 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// ---- Cube model: 27 cubies as Three.js meshes ----
-// Material order in BoxGeometry: +x, -x, +y, -y, +z, -z  (right, left, top, bottom, front, back)
+// ---- Cube model ----
+// Material order on a Three.js BoxGeometry: [+x, -x, +y, -y, +z, -z].
+// We tag each material with its solved-state face letter so we can read back
+// the cube's current facelet string after any sequence of turns.
 const cubeGroup = new THREE.Group();
 scene.add(cubeGroup);
 
-const CUBIE_SIZE = 0.96;   // gap between cubies = 0.04
+const CUBIE_SIZE = 0.96;
 const geometry = new THREE.BoxGeometry(CUBIE_SIZE, CUBIE_SIZE, CUBIE_SIZE);
 
+const SIDES = [
+  { axis: 'x', coord:  1, color: COLOR.right,  letter: 'R' },
+  { axis: 'x', coord: -1, color: COLOR.left,   letter: 'L' },
+  { axis: 'y', coord:  1, color: COLOR.top,    letter: 'U' },
+  { axis: 'y', coord: -1, color: COLOR.bottom, letter: 'D' },
+  { axis: 'z', coord:  1, color: COLOR.front,  letter: 'F' },
+  { axis: 'z', coord: -1, color: COLOR.back,   letter: 'B' },
+];
+
 function buildCubie(x, y, z) {
-  const mats = [
-    new THREE.MeshLambertMaterial({ color: x === 1  ? COLOR.right  : COLOR.inside }),
-    new THREE.MeshLambertMaterial({ color: x === -1 ? COLOR.left   : COLOR.inside }),
-    new THREE.MeshLambertMaterial({ color: y === 1  ? COLOR.top    : COLOR.inside }),
-    new THREE.MeshLambertMaterial({ color: y === -1 ? COLOR.bottom : COLOR.inside }),
-    new THREE.MeshLambertMaterial({ color: z === 1  ? COLOR.front  : COLOR.inside }),
-    new THREE.MeshLambertMaterial({ color: z === -1 ? COLOR.back   : COLOR.inside }),
-  ];
+  const pos = { x, y, z };
+  const mats = SIDES.map(s => {
+    const visible = pos[s.axis] === s.coord;
+    const m = new THREE.MeshLambertMaterial({ color: visible ? s.color : COLOR.inside });
+    m.userData.faceLetter = visible ? s.letter : null;
+    return m;
+  });
   const mesh = new THREE.Mesh(geometry, mats);
   mesh.position.set(x, y, z);
   mesh.userData.solved = { x, y, z };
@@ -251,12 +509,7 @@ function buildCube() {
 }
 buildCube();
 
-// ---- Face turns with animation via pivot reparenting ----
-// FACES[id] = { axis, coord, vec }
-//   axis: 'x' | 'y' | 'z' — the axis the face lies perpendicular to
-//   coord: 1 or -1 — which layer
-//   sign: clockwise rotation direction when looking AT the face from outside
-//         (positive rotation around the outward-pointing axis)
+// ---- Face turns (animated via pivot reparenting) ----
 const FACES = {
   R: { axis: 'x', coord:  1, sign: -1 },
   L: { axis: 'x', coord: -1, sign:  1 },
@@ -268,7 +521,8 @@ const FACES = {
 
 let busy = false;
 const queue = [];
-let cubeVersion = 0;   // bumped when the cube is rebuilt; in-flight turns from older versions abort
+let cubeVersion = 0;
+let afterEachTurn = null;   // hook called after each turn (used by solve playback)
 
 function enqueue(face, inverse = false) {
   queue.push({ face, inverse });
@@ -287,16 +541,13 @@ function performTurn(faceId, inverse) {
   busy = true;
   const myVersion = cubeVersion;
 
-  // Find cubies on this layer (round to handle floating drift)
   const layer = cubies.filter(c => Math.round(c.position[face.axis]) === face.coord);
-
-  // Build a pivot Group at the origin, reparent layer cubies into it
   const pivot = new THREE.Group();
   cubeGroup.add(pivot);
-  layer.forEach(c => pivot.attach(c)); // attach() preserves world transform
+  layer.forEach(c => pivot.attach(c));
 
   const targetAngle = (Math.PI / 2) * face.sign * (inverse ? -1 : 1);
-  const duration = 180; // ms
+  const duration = 180;
   const start = performance.now();
   const axisVec = new THREE.Vector3(
     face.axis === 'x' ? 1 : 0,
@@ -306,20 +557,17 @@ function performTurn(faceId, inverse) {
 
   function step(now) {
     if (myVersion !== cubeVersion) {
-      // Cube was rebuilt mid-turn: drop the pivot and bail.
       if (pivot.parent) pivot.parent.remove(pivot);
       busy = false;
       return;
     }
     const t = Math.min(1, (now - start) / duration);
-    // Smooth-step easing
     const e = t * t * (3 - 2 * t);
     pivot.setRotationFromAxisAngle(axisVec, targetAngle * e);
     renderer.render(scene, camera);
     if (t < 1) {
       requestAnimationFrame(step);
     } else {
-      // Bake: snap to exact angle, then re-parent and round positions
       pivot.setRotationFromAxisAngle(axisVec, targetAngle);
       pivot.updateMatrixWorld(true);
       layer.forEach(c => {
@@ -327,23 +575,19 @@ function performTurn(faceId, inverse) {
         c.position.x = Math.round(c.position.x);
         c.position.y = Math.round(c.position.y);
         c.position.z = Math.round(c.position.z);
-        // Snap quaternion components to clean multiples of 90 deg so drift can't accumulate
         snapQuaternion(c.quaternion);
       });
       cubeGroup.remove(pivot);
       busy = false;
       updateStatus();
+      if (afterEachTurn) afterEachTurn();
       pump();
     }
   }
   requestAnimationFrame(step);
 }
 
-// Round a quaternion to the nearest 90 deg orientation (24 possible cube orientations).
-// Keeps cubies on the integer lattice after many turns.
 function snapQuaternion(q) {
-  // The quaternion components for 90 deg multiples are 0 or ±sqrt(0.5) or ±1.
-  // Easier: convert to matrix, round each entry to nearest 0 / ±1, re-quaternionize.
   const m = new THREE.Matrix4().makeRotationFromQuaternion(q);
   const e = m.elements;
   for (let i = 0; i < 16; i++) {
@@ -356,12 +600,13 @@ function snapQuaternion(q) {
 // ---- Scramble ----
 function scramble(count = 20) {
   if (busy || queue.length) return;
+  stopSolve();
   const moves = ['F', 'B', 'R', 'L', 'U', 'D'];
   let lastFace = null;
   for (let i = 0; i < count; i++) {
     let m;
     do { m = moves[Math.floor(Math.random() * 6)]; }
-    while (m === lastFace);          // avoid trivial repeats
+    while (m === lastFace);
     lastFace = m;
     enqueue(m, Math.random() < 0.5);
   }
@@ -381,7 +626,238 @@ function isSolved() {
 }
 
 function updateStatus() {
+  if (statusEl.dataset.locked === '1') return; // solver sets its own status
   statusEl.textContent = isSolved() ? 'solved' : 'scrambled';
+  statusEl.classList.remove('warn');
+  solveBtn.disabled = isSolved();
+}
+
+// ---- State extraction: Three.js scene -> Kociemba facelet string ----
+// Standard Kociemba layout: 54 chars, in order U(9) R(9) F(9) D(9) L(9) B(9).
+// Within each face, slots are row-major when looking AT the face from outside,
+// with these conventions (matching the Singmaster / cubejs layout):
+//   U: looking down,  rows go back->front,  cols left->right
+//   D: looking up,    rows go front->back,  cols left->right
+//   F: looking at +z, rows go top->bottom,  cols left->right
+//   B: looking at -z, rows go top->bottom,  cols right->left  (because flipped)
+//   R: looking at +x, rows go top->bottom,  cols front->back
+//   L: looking at -x, rows go top->bottom,  cols back->front
+
+const LOCAL_NORMALS = [
+  new THREE.Vector3( 1, 0, 0),
+  new THREE.Vector3(-1, 0, 0),
+  new THREE.Vector3( 0, 1, 0),
+  new THREE.Vector3( 0,-1, 0),
+  new THREE.Vector3( 0, 0, 1),
+  new THREE.Vector3( 0, 0,-1),
+];
+
+function localFaceIndexFacing(cubie, worldDir) {
+  const tmp = new THREE.Vector3();
+  for (let i = 0; i < 6; i++) {
+    tmp.copy(LOCAL_NORMALS[i]).applyQuaternion(cubie.quaternion);
+    if (tmp.dot(worldDir) > 0.9) return i;
+  }
+  return -1;
+}
+
+const FACE_DEFS = [
+  { letter: 'U', axis: 'y', coord:  1, outward: new THREE.Vector3(0, 1, 0),
+    slot: c => (Math.round(c.position.z) + 1) * 3 + (Math.round(c.position.x) + 1) },
+  { letter: 'R', axis: 'x', coord:  1, outward: new THREE.Vector3(1, 0, 0),
+    slot: c => (1 - Math.round(c.position.y)) * 3 + (1 - Math.round(c.position.z)) },
+  { letter: 'F', axis: 'z', coord:  1, outward: new THREE.Vector3(0, 0, 1),
+    slot: c => (1 - Math.round(c.position.y)) * 3 + (Math.round(c.position.x) + 1) },
+  { letter: 'D', axis: 'y', coord: -1, outward: new THREE.Vector3(0,-1, 0),
+    slot: c => (1 - Math.round(c.position.z)) * 3 + (Math.round(c.position.x) + 1) },
+  { letter: 'L', axis: 'x', coord: -1, outward: new THREE.Vector3(-1,0, 0),
+    slot: c => (1 - Math.round(c.position.y)) * 3 + (Math.round(c.position.z) + 1) },
+  { letter: 'B', axis: 'z', coord: -1, outward: new THREE.Vector3(0, 0,-1),
+    slot: c => (1 - Math.round(c.position.y)) * 3 + (1 - Math.round(c.position.x)) },
+];
+
+function extractFacelets() {
+  let result = '';
+  for (const face of FACE_DEFS) {
+    const slots = new Array(9).fill('?');
+    const layer = cubies.filter(c => Math.round(c.position[face.axis]) === face.coord);
+    for (const cubie of layer) {
+      const idx = localFaceIndexFacing(cubie, face.outward);
+      if (idx < 0) continue;
+      const letter = cubie.material[idx].userData.faceLetter;
+      if (!letter) continue;
+      slots[face.slot(cubie)] = letter;
+    }
+    result += slots.join('');
+  }
+  return result;
+}
+
+// ---- Solver ----
+let solverReady = false;
+
+function initSolverAsync() {
+  return new Promise(resolve => {
+    if (solverReady) return resolve();
+    // Cube.initSolver is synchronous and heavy (~1-2s on first call).
+    // setTimeout 0 yields one frame so the status text renders first.
+    setTimeout(() => {
+      try { window.Cube.initSolver(); solverReady = true; }
+      catch (e) { console.error('initSolver failed:', e); }
+      resolve();
+    }, 0);
+  });
+}
+
+function parseMoves(str) {
+  // "R U R' U2 F'" -> [{face:'R'}, {face:'U'}, {face:'R',inverse:true}, {face:'U'}, {face:'U'}, {face:'F',inverse:true}]
+  return str.trim().split(/\s+/).filter(Boolean).flatMap(token => {
+    const face = token[0];
+    const mod = token.slice(1);
+    if (!FACES[face]) return [];
+    if (mod === '') return [{ face, inverse: false }];
+    if (mod === "'") return [{ face, inverse: true }];
+    if (mod === '2') return [{ face, inverse: false }, { face, inverse: false }];
+    return [];
+  });
+}
+
+let solving = false;
+let solutionTokens = [];   // ["R", "U", "R'", "U2", ...] for display (one chip per Kociemba move)
+let solutionMoves = [];    // expanded into single 90deg turns
+let solveMoveCursor = 0;   // index into solutionMoves (90deg turns completed)
+let tokenBoundaries = [];  // solutionMoves index AFTER each token completes
+
+function setStatus(text, warn = false) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle('warn', warn);
+}
+
+function lockStatus(text, warn = false) {
+  setStatus(text, warn);
+  statusEl.dataset.locked = '1';
+}
+
+function unlockStatus() {
+  statusEl.dataset.locked = '';
+  updateStatus();
+}
+
+async function solveCube() {
+  if (busy || solving || isSolved()) return;
+  solving = true;
+  solveBtn.disabled = true;
+  scrambleBtn.disabled = true;
+
+  lockStatus('initializing solver...');
+  await initSolverAsync();
+
+  lockStatus('computing solution...');
+  await new Promise(r => requestAnimationFrame(r));
+
+  const facelets = extractFacelets();
+  if (facelets.includes('?') || facelets.length !== 54) {
+    lockStatus('extract failed', true);
+    solving = false;
+    scrambleBtn.disabled = false;
+    setTimeout(unlockStatus, 1500);
+    return;
+  }
+
+  let solutionStr;
+  try {
+    const c = window.Cube.fromString(facelets);
+    solutionStr = c.solve();
+  } catch (e) {
+    lockStatus('solve error: ' + e.message, true);
+    console.error(e);
+    solving = false;
+    scrambleBtn.disabled = false;
+    setTimeout(unlockStatus, 2500);
+    return;
+  }
+
+  solutionTokens = solutionStr.trim().split(/\s+/).filter(Boolean);
+  solutionMoves = parseMoves(solutionStr);
+  if (solutionMoves.length === 0) {
+    lockStatus('no moves needed');
+    solving = false;
+    scrambleBtn.disabled = false;
+    setTimeout(unlockStatus, 1500);
+    return;
+  }
+
+  // Map tokens to their last-90deg-turn index, so we know which chip to highlight as moves complete
+  tokenBoundaries = [];
+  let acc = 0;
+  for (const t of solutionTokens) {
+    acc += t.endsWith('2') ? 2 : 1;
+    tokenBoundaries.push(acc);
+  }
+  solveMoveCursor = 0;
+
+  renderStrip();
+  document.getElementById('strip').classList.add('active');
+  lockStatus(`solving · ${solutionTokens.length} moves`);
+
+  afterEachTurn = onSolveTurnDone;
+  for (const m of solutionMoves) enqueue(m.face, m.inverse);
+}
+
+function onSolveTurnDone() {
+  solveMoveCursor++;
+  // Find which token index this corresponds to
+  let tokenIdx = tokenBoundaries.findIndex(b => b > solveMoveCursor);
+  if (tokenIdx === -1) tokenIdx = solutionTokens.length;
+  renderStripHighlight(tokenIdx);
+
+  if (solveMoveCursor >= solutionMoves.length) {
+    finishSolve(true);
+  }
+}
+
+function finishSolve(success) {
+  afterEachTurn = null;
+  solving = false;
+  scrambleBtn.disabled = false;
+  if (success) {
+    lockStatus('solved · ' + solutionTokens.length + ' moves');
+    setTimeout(() => { unlockStatus(); document.getElementById('strip').classList.remove('active'); }, 2500);
+  } else {
+    document.getElementById('strip').classList.remove('active');
+    unlockStatus();
+  }
+}
+
+function stopSolve() {
+  if (!solving) return;
+  queue.length = 0;
+  finishSolve(false);
+}
+
+function renderStrip() {
+  const movesEl = document.getElementById('strip-moves');
+  movesEl.innerHTML = '';
+  solutionTokens.forEach((t, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'move-chip';
+    chip.textContent = t;
+    chip.dataset.idx = i;
+    movesEl.appendChild(chip);
+  });
+  renderStripHighlight(0);
+}
+
+function renderStripHighlight(currentIdx) {
+  const movesEl = document.getElementById('strip-moves');
+  document.getElementById('strip-count').textContent = `${Math.min(currentIdx + 1, solutionTokens.length)} / ${solutionTokens.length}`;
+  Array.from(movesEl.children).forEach((chip, i) => {
+    chip.classList.toggle('done', i < currentIdx);
+    chip.classList.toggle('current', i === currentIdx);
+  });
+  // Scroll the current chip into view
+  const current = movesEl.querySelector('.move-chip.current');
+  if (current) current.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
 }
 
 // ---- Input ----
@@ -397,37 +873,57 @@ function setInvert(v) {
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
+  if (e.target.closest('#modal-backdrop.active')) return;
+  if (e.code === 'Space') { e.preventDefault(); scramble(); return; }
+  if (e.code === 'Enter') { e.preventDefault(); solveCube(); return; }
+  if (e.code === 'Escape') { closeModal(); return; }
   const k = e.key.toUpperCase();
-  if (k === ' ' || e.code === 'Space') {
-    e.preventDefault();
-    scramble();
-    return;
-  }
   if ('FBRLUD'.includes(k)) {
+    if (solving) return; // don't accept user moves during automated solve
     enqueue(k, e.shiftKey);
   }
 });
 
 document.querySelectorAll('footer button[data-move]').forEach(btn => {
-  btn.addEventListener('click', () => enqueue(btn.dataset.move, inverseHeld));
+  btn.addEventListener('click', () => {
+    if (solving) return;
+    enqueue(btn.dataset.move, inverseHeld);
+  });
 });
 invertBtn.addEventListener('click', () => setInvert(!inverseHeld));
-document.getElementById('scramble').addEventListener('click', () => scramble());
-document.getElementById('reset').addEventListener('click', () => {
+scrambleBtn.addEventListener('click', () => scramble());
+solveBtn.addEventListener('click', () => solveCube());
+document.getElementById('strip-stop').addEventListener('click', () => stopSolve());
+resetBtn.addEventListener('click', () => {
   queue.length = 0;
-  cubeVersion++;     // signals any in-flight turn to abort
+  cubeVersion++;
   busy = false;
+  afterEachTurn = null;
+  solving = false;
+  scrambleBtn.disabled = false;
+  document.getElementById('strip').classList.remove('active');
   buildCube();
-  updateStatus();
+  unlockStatus();
 });
 
-// ---- Render loop (orbit controls + idle render) ----
+// ---- Modal ----
+const modalBackdrop = document.getElementById('modal-backdrop');
+function openModal()  { modalBackdrop.classList.add('active'); }
+function closeModal() { modalBackdrop.classList.remove('active'); }
+document.getElementById('open-modal').addEventListener('click', (e) => { e.preventDefault(); openModal(); });
+document.getElementById('modal-close').addEventListener('click', closeModal);
+modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeModal(); });
+
+// ---- Render loop ----
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
   if (!busy) renderer.render(scene, camera);
 }
 animate();
+
+// Initial state
+updateStatus();
 </script>
 </body>
 </html>

@@ -30,7 +30,7 @@ View rotation is decoupled: mouse drag updates two Euler angles applied via `glR
 - 20-move random scramble.
 - Mouse-drag view rotation, basic OpenGL lighting, depth testing.
 
-Not implemented: smooth animated rotations, move history, solver, other cube sizes. The `CHECKLIST.md` lists where this could go.
+Not implemented in the Python: smooth animated rotations, move history, solver, other cube sizes. The browser version below adds animated turns and a solver; `CHECKLIST.md` lists what else could go in.
 
 ## Run locally
 
@@ -43,9 +43,15 @@ Requires a display (OpenGL context). Tested on Python 3.11 with Pygame 2.5.2, Py
 
 ## Browser version
 
-The desktop app needs OpenGL, which makes it awkward to share. `docs/index.html` is a single-file JavaScript port using Three.js, served from GitHub Pages at the URL above. Same controls (`F/B/R/L/U/D`, hold `Shift` for inverse, `Space` to scramble, drag to orbit), same color scheme, but no install.
+The desktop app needs OpenGL, which makes it awkward to share. `docs/index.html` is a single-file JavaScript port using Three.js, served from GitHub Pages at the URL above. Same controls (`F/B/R/L/U/D`, hold `Shift` for inverse, `Space` to scramble, drag to orbit), same color scheme, no install.
 
-The JS version drops the hand-rolled color-permutation tables. Instead it reparents the 9 face cubies into a temporary `THREE.Group` pivot, animates the pivot's rotation, then bakes the world transform back onto each cubie and re-rounds positions to the integer lattice. Three.js's matrix math handles sticker orientation for free. A `snapQuaternion` step rounds each cubie's orientation to the nearest 90-degree multiple after every turn so float drift can't accumulate over a long scramble.
+The JS version drops the hand-rolled color-permutation tables. It reparents the 9 face cubies into a temporary `THREE.Group` pivot, animates the pivot's rotation over 180&nbsp;ms, then bakes the world transform back onto each cubie and re-rounds positions to the integer lattice. Three.js's matrix math handles sticker orientation for free. A `snapQuaternion` step rounds each cubie's orientation to the nearest 90-degree multiple after every turn so float drift can't accumulate over a long scramble.
+
+## Solver and tutorial
+
+Hit **Solve** (or press `Enter`) to watch the cube solve itself. The solver is [cubejs](https://github.com/ldez/cubejs), a JS port of Kociemba's two-phase algorithm. State extraction walks each cubie, asks "which of my six local face normals currently points along the world `+y` axis?" using the cubie's snapped quaternion, then reads the color letter stored in `material.userData.faceLetter` at that index. The 54-character facelet string goes to `Cube.fromString(s).solve()`, which returns a near-optimal solution in ~20 moves. The solution is parsed (`R'` → inverse, `U2` → two quarter-turns) and queued through the same animation pipeline as a manual scramble. A horizontal move strip highlights the current step.
+
+The **how to solve** link in the header opens an inline tutorial covering notation (`F`/`F'`/`F2`) and the four phases of the Beginner's Method (white cross, white corners, middle layer edges, last layer) with the trigger algorithms. Kociemba's solution is shorter; Beginner's is what a human can actually understand and execute.
 
 ## What I learned
 
